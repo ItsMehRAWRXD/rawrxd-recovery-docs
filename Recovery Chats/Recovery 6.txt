@@ -1,0 +1,135 @@
+ItsMehRAWRXD: Analyze this codebase to generate or update `.github/copilot-instructions.md` for guiding AI coding agents.
+
+Focus on discovering the essential knowledge that would help an AI agents be immediately productive in this codebase. Consider aspects like:
+- The "big picture" architecture that requires reading multiple files to understand - major components, service boundaries, data flows, and the "why" behind structural decisions
+- Critical developer workflows (builds, tests, debugging) especially commands that aren't obvious from file inspection alone
+- Project-specific conventions and patterns that differ from common practices
+- Integration points, external dependencies, and cross-component communication patterns
+
+Source existing AI conventions from `**/{.github/copilot-instructions.md,AGENT.md,AGENTS.md,CLAUDE.md,.cursorrules,.windsurfrules,.clinerules,.cursor/rules/**,.windsurf/rules/**,.clinerules/**,README.md}` (do one glob search).
+
+Guidelines (read more at https://aka.ms/vscode-instructions-docs):
+- If `.github/copilot-instructions.md` exists, merge intelligently - preserve valuable content while updating outdated sections
+- Write concise, actionable instructions (~20-50 lines) using markdown structure
+- Include specific examples from the codebase when describing patterns
+- Avoid generic advice ("write tests", "handle errors") - focus on THIS project's specific approaches
+- Document only discoverable patterns, not aspirational practices
+- Reference key files/directories that exemplify important patterns
+
+Update `.github/copilot-instructions.md` for the user, then ask for feedback on any unclear or incomplete sections to iterate.
+
+GitHub Copilot: I'll analyze this codebase to create comprehensive Copilot instructions. Let me start by searching for existing AI convention files and understanding the project structure. 
+
+Searching for files matching `**/{.github/copilot-instructions.md,AGENT.md,AGENTS.md,CLAUDE.md,.cursorrules,.windsurfrules,.clinerules,.cursor/rules/**,.windsurf/rules/**,.clinerules/**,README.md}`
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire)
+
+Searching for files matching `**/README.md`
+
+Searching for files matching `**/.cursorrules`
+
+Searching for files matching `**/copilot-instructions.md`
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/.github)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader)
+
+Searching for regex `README|readme` (`**/d:/temp/RawrXD-q8-wire/**`)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/README.md#1-1), lines 1 to 100
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/CMakeLists.txt#1-1), lines 1 to 80
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/README.md#101-101), lines 101 to 200
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/ARCHITECTURE-EDITOR.md#1-1), lines 1 to 50
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/AUTONOMOUS-AGENT-GUIDE.md#1-1), lines 1 to 50
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/QUICK-REFERENCE.md#1-1), lines 1 to 100
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/CMakeLists.txt#100-100), lines 100 to 200
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/qtapp)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/qtapp/MainWindow.h#1-1), lines 1 to 100
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/agent)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/AUTONOMOUS-AGENT-GUIDE.md#50-50), lines 50 to 80
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/CMakeLists.txt#150-150), lines 150 to 300
+
+Searching for regex `class (QuantBackend|StreamerClient|AgentOrchestrator|GGUFLoader|VulkanCompute)` (`**/d:/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/**`)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/CHAT-APP-QUICKSTART.md#1-1), lines 1 to 60
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/qtapp/gguf_loader.hpp)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/src/llm_adapter/QuantBackend.h)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/shaders)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/kernels)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/BENCHMARKS.md#1-1), lines 1 to 80
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/scripts)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/scripts/build.ps1)
+
+Searching for text `Test` (`**/d:/temp/RawrXD-q8-wire/RawrXD-ModelLoader/*.md`)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/tests)
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/SETUP.md#1-1), lines 1 to 100
+
+Read [](file:///d%3A/temp/RawrXD-q8-wire/RawrXD-ModelLoader/IDE-QUICK-REFERENCE.md#1-1), lines 1 to 100
+
+Now I have enough context. Let me create a comprehensive `.github/copilot-instructions.md` file for this codebase. 
+
+Created [](file:///d%3A/temp/RawrXD-q8-wire/.github/copilot-instructions.md)
+
+Perfect! I've created a comprehensive `.github/copilot-instructions.md` file for the RawrXD codebase. Here's what I've included:
+
+## Key Sections:
+
+1. **Project Overview** - Explains the three main executables and core technologies (GGUF parsing, Vulkan GPU, IDE environment)
+
+2. **Build System** - Quick build commands, critical targets, and environment requirements (Qt6, MSVC, Vulkan SDK)
+
+3. **Architecture** - Component locations with clear directory structure and key architectural patterns:
+   - Dual GGUF loader implementations
+   - QuantBackend runtime switching system
+   - Autonomous agent system (Stage 3 autonomy)
+   - MainWindow's 20+ dockable subsystems
+
+4. **Development Workflows** - Specific to this codebase:
+   - Adding compute kernels (with naming conventions)
+   - Testing with JSON benchmark output
+   - Autonomous agent triggers (Ctrl+Shift+A, env vars, clipboard)
+
+5. **Common Build Issues** - Real problems from this codebase (Qt6 paths, MSVC/MinGW mixing, ggml conflicts)
+
+6. **Coding Conventions** - Discovered patterns:
+   - File naming (PascalCase vs snake_case)
+   - `#pragma once` standard
+   - Qt forward declarations
+   - QuantBackend abstraction pattern
+
+7. **API & Integration** - Ollama/OpenAI endpoints, model storage locations
+
+8. **Performance Characteristics** - AMD RDNA3 optimization, zone-based streaming, benchmark metrics
+
+9. **Special Considerations** - Hot-reload system, session persistence, shader compilation, swarm collaboration
+
+The instructions are **actionable and specific** - they reference actual files, include real code examples from the codebase, and document discovered patterns rather than generic advice. AI agents can now immediately understand the dual GGUF implementations, the autonomous agent system's capabilities, and the critical MSVC-only requirement for Qt targets.
+
+**Would you like me to:**
+- Add more details about specific subsystems (e.g., the terminal manager, syntax highlighting engine)?
+- Include examples of common tasks (e.g., "how to add a new quantization mode")?
+- Document any unclear integration points you've encountered?
+
+Made changes.

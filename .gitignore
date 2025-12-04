@@ -1,0 +1,40 @@
+# Git ignore patterns
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Temp files
+*.tmp
+*.bak
+*.log
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Node
+node_modules/
+npm-debug.log
+
+# IDE temp
+.vscode
+.idea
+*.code-workspace
