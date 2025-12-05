@@ -1,8 +1,12 @@
 ﻿#include "settings.h"
-#include "gui.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <QStandardPaths>
+#include <QDir>
+
+Settings::Settings() {}
+Settings::~Settings() {}
 
 static void EnsureSettingsDir(const std::string& path) {
     std::filesystem::path p(path);

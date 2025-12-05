@@ -98,6 +98,16 @@ public:
     bool LoadTensorZone(const std::string& tensor_name, std::vector<uint8_t>& data) override;
     bool LoadTensorRange(size_t start_idx, size_t count, std::vector<uint8_t>& data) override;
     void AttachVulkanEngine(VulkanCompute* engine) { vulkan_engine_ = engine; }
+    
+    // GGUF Alignment Helpers (tensor data section is 32-byte aligned per spec)
+    static constexpr uint64_t GGUF_TENSOR_ALIGNMENT = 32;
+    inline uint64_t AlignTo32Bytes(uint64_t offset) const {
+        return (offset + GGUF_TENSOR_ALIGNMENT - 1) & ~(GGUF_TENSOR_ALIGNMENT - 1);
+    }
+    inline uint64_t GetAlignedTensorDataStart() const {
+        // Tensor data section starts after metadata + tensor info, aligned to 32 bytes
+        return AlignTo32Bytes(static_cast<uint64_t>(file_.tellg()));
+    }
     bool UploadAllTensorsToVulkan();
     bool UploadTensorToVulkan(const std::string& tensor_name);
     const std::unordered_map<std::string, VulkanTensor>& GetVulkanTensors() const { return vulkan_tensors_; }
@@ -122,6 +132,8 @@ private:
     GGUFHeader header_;
     GGUFMetadata metadata_;
     std::vector<TensorInfo> tensors_;
+    // O(1) tensor lookup index (Bottleneck #14 fix - eliminates std::find_if O(n) search)
+    std::unordered_map<std::string, const TensorInfo*> tensor_index_;
     bool is_open_;
     VulkanCompute* vulkan_engine_{nullptr};
     std::unordered_map<std::string, VulkanTensor> vulkan_tensors_;

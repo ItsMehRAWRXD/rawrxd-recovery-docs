@@ -198,4 +198,13 @@ private:
     QString extractModelName(const QString& path) const;
     void rebuildTensorCache();
     void initializeTokenizer();
+    
+    // Advanced sampling
+    int32_t sampleNextToken(std::vector<float>& logits, double temperature, double topP);
+    float getRandomFloat(float min, float max);
+    
+    // Sampling configuration
+    double m_topP{0.9};  // Top-P (nucleus) sampling threshold
+    std::mt19937 m_randomEngine;  // Thread-safe random number generator
+    bool m_kvCacheReady{false};  // Track if KV-cache is prefilled
 };

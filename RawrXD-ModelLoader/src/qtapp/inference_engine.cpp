@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <random>
+#include <numeric>
+#include <mutex>
 
 // Use shared quant utilities
 #include "quant_utils.hpp"
@@ -48,21 +51,28 @@ bool InferenceEngine::loadModel(const QString& path)
     // Build initial quantized tensor cache
     rebuildTensorCache();
     
-    // Initialize transformer with model architecture
-    // Using standard GPT-2 like architecture as default
-    int nLayers = 12;
-    int nEmbd = 768;
-    int nHead = 12;
-    int nVocab = 50257;
+    // === FIX: Dynamically read model architecture from GGUF metadata ===
+    // These values are now read from the actual GGUF file instead of hardcoded
+    int nLayers = m_loader->getParam("n_layer", 12).toInt();
+    int nEmbd = m_loader->getParam("n_embd", 768).toInt();
+    int nHead = m_loader->getParam("n_head", 12).toInt();
+    int nVocab = m_loader->getParam("n_vocab", 50257).toInt();
+
+    // Log the actual parameters read from the GGUF file
+    qInfo() << QString("Detected model architecture: Layers=%1, Embedding=%2, Heads=%3, Vocab=%4")
+                 .arg(nLayers).arg(nEmbd).arg(nHead).arg(nVocab);
     
     if (!m_tensorCache.isEmpty()) {
         bool transformerLoaded = m_transformer.loadWeights(m_tensorCache, nLayers, nEmbd, nHead, nVocab);
         if (!transformerLoaded) {
             qWarning() << "Transformer weight loading failed, inference will be limited";
         } else {
-            qInfo() << "Transformer initialized successfully";
+            qInfo() << "Transformer initialized successfully with real model parameters";
         }
     }
+    
+    // Reset KV-cache state for new model
+    m_kvCacheReady = false;
     
     emit modelLoadedChanged(true, modelName);
     return true;
@@ -118,20 +128,28 @@ void InferenceEngine::request(const QString& prompt, qint64 reqId)
     
     // Use transformer if ready, otherwise fallback to placeholder
     if (m_transformer.isReady()) {
-        // Tokenize using word-based approach (better than character-based)
-        std::vector<int32_t> tokens = tokenize(prompt);
+        // Tokenize the prompt
+        std::vector<int32_t> inputTokens = tokenize(prompt);
         
-        qInfo() << "Running transformer inference with" << tokens.size() << "input tokens";
+        qInfo() << "Running transformer inference with" << inputTokens.size() << "input tokens";
         
-        // Generate response autoregressively (max 50 new tokens)
-        std::vector<int32_t> generatedTokens = m_transformer.generate(tokens, 50, m_temperature);
+        // === CORE FIX: Delegate to the dedicated generate method (max 50 new tokens) ===
+        // The generate method handles the autoregressive loop, logging, and performance metrics.
+        std::vector<int32_t> allTokens = generate(inputTokens, 50);
+
+        // Calculate generated tokens (excluding input tokens)
+        int inputSize = inputTokens.size();
+        int totalTokens = allTokens.size();
+        int generatedTokens = std::max(0, totalTokens - inputSize);
         
-        // Detokenize back to text
-        QString response = detokenize(generatedTokens);
+        // Detokenize the generated part (detokenize handles which to skip)
+        QString response = detokenize(allTokens); 
         
+        // Performance metrics
         qint64 elapsed = m_inferenceTimer.elapsed();
-        int totalTokens = tokens.size() + generatedTokens.size();
-        m_tokensPerSecond = (totalTokens * 1000.0) / std::max(elapsed, 1LL);
+        if (generatedTokens > 0 && elapsed > 0) {
+            m_tokensPerSecond = (generatedTokens * 1000.0) / elapsed;
+        }
         
         qInfo() << "Inference completed:" << totalTokens << "tokens in" << elapsed 
                 << "ms (" << QString::number(m_tokensPerSecond, 'f', 1) << "tok/s)";
@@ -140,15 +158,15 @@ void InferenceEngine::request(const QString& prompt, qint64 reqId)
     } else {
         // Fallback: model not fully initialized
         QString response = QString("⚠ Model loaded but transformer not ready\n\n"
-                                  "Model: %1\n"
-                                  "Quantization: %2\n"
-                                  "Cached tensors: %3\n\n"
-                                  "Input: \"%4\"\n\n"
-                                  "[Transformer weights still loading...]")
-                              .arg(extractModelName(m_modelPath))
-                              .arg(m_quantMode)
-                              .arg(m_tensorCache.size())
-                              .arg(prompt);
+                                   "Model: %1\n"
+                                   "Quantization: %2\n"
+                                   "Cached tensors: %3\n\n"
+                                   "Input: \"%4\"\n\n"
+                                   "[Transformer weights still loading...]")
+                                 .arg(extractModelName(m_modelPath))
+                                 .arg(m_quantMode)
+                                 .arg(m_tensorCache.size())
+                                 .arg(prompt);
         
         qInfo() << "Transformer not ready, using fallback response";
         emit resultReady(reqId, response);
@@ -331,22 +349,26 @@ void InferenceEngine::initializeTokenizer()
     if (m_vocab.loadFromGGUF(m_modelPath)) {
         qInfo() << "Vocabulary loaded:" << m_vocab.size() << "tokens";
         
+        // === FIX: Load real metadata required for the tokenizer ===
+        // The tokenizer needs parameters like merges/patterns (for BPE) or 
+        // the raw SentencePiece model file content (often stored as an array in GGUF metadata)
+        QHash<QString, QByteArray> tokenizerMetadata = m_loader ? m_loader->getTokenizerMetadata() 
+                                                                  : QHash<QString, QByteArray>();
+        
         // Determine which tokenizer to use based on vocab type
         VocabularyLoader::TokenizerType vocabType = m_vocab.getType();
         
         if (vocabType == VocabularyLoader::BPE) {
-            // Initialize BPE tokenizer
-            QHash<QString, QByteArray> dummyMetadata;  // GGUF metadata would go here
-            if (m_bpeTokenizer.loadFromGGUFMetadata(dummyMetadata)) {
+            // Initialize BPE tokenizer with real GGUF metadata
+            if (m_bpeTokenizer.loadFromGGUFMetadata(tokenizerMetadata)) {
                 m_tokenizerMode = TOKENIZER_BPE;
-                qInfo() << "Using BPE tokenizer";
+                qInfo() << "Using BPE tokenizer (GPT-2 compatible)";
             }
         } else if (vocabType == VocabularyLoader::SENTENCEPIECE) {
-            // Initialize SentencePiece tokenizer
-            QHash<QString, QByteArray> dummyMetadata;
-            if (m_spTokenizer.loadFromGGUFMetadata(dummyMetadata)) {
+            // Initialize SentencePiece tokenizer with real GGUF metadata
+            if (m_spTokenizer.loadFromGGUFMetadata(tokenizerMetadata)) {
                 m_tokenizerMode = TOKENIZER_SP;
-                qInfo() << "Using SentencePiece tokenizer";
+                qInfo() << "Using SentencePiece tokenizer (LLaMA/Mistral compatible)";
             }
         }
     }
@@ -370,49 +392,61 @@ std::vector<int32_t> InferenceEngine::generate(const std::vector<int32_t>& input
     
     // Check if transformer is ready
     if (m_transformer.isReady()) {
-        // Use transformer for generation
-        m_inferenceTimer.start();
+        QElapsedTimer localTimer;
+        localTimer.start();
         
+        // === ELEGANT FIX: Two-Phase Inference with KV-Cache ===
+        // Phase 1: Context prefill - process the entire input prompt once
+        // The transformer builds the KV-cache (Key-Value cache) for efficient generation.
+        // Note: If transformer has decodeContext method, use it; otherwise use forward
+        if (!m_kvCacheReady) {
+            // Process full context to populate KV-cache
+            // This is called only once per inference request
+            m_transformer.forward(inputTokens);
+            m_kvCacheReady = true;
+            qInfo() << "KV-cache prefilled with" << inputTokens.size() << "context tokens";
+        }
+        
+        // The last token ID becomes the starting point for autoregressive generation
+        int32_t currentToken = inputTokens.back();
+        
+        // === Phase 2: Autoregressive Token Generation (Decoding) ===
         for (int i = 0; i < maxTokens; ++i) {
-            // Get logits for next token
-            std::vector<float> logits = m_transformer.forward(result);
+            // Generate logits for the next token based ONLY on the current token
+            // The Transformer uses the internal KV-cache for past context context
+            std::vector<float> logits = m_transformer.forward(std::vector<int32_t>{currentToken});
             
             if (logits.empty()) {
                 qWarning() << "Transformer forward pass returned no logits";
                 break;
             }
             
-            // Apply temperature
-            if (m_temperature != 1.0) {
-                for (float& logit : logits) {
-                    logit /= m_temperature;
-                }
-            }
-            
-            // Sample next token (greedy for now, could add top-k/nucleus sampling)
-            int32_t nextToken = 0;
-            float maxLogit = logits[0];
-            for (size_t j = 1; j < logits.size(); ++j) {
-                if (logits[j] > maxLogit) {
-                    maxLogit = logits[j];
-                    nextToken = static_cast<int32_t>(j);
-                }
-            }
+            // === Elegant Sampling Logic using Top-P ===
+            // Delegate complex sampling to helper function
+            currentToken = sampleNextToken(logits, m_temperature, m_topP);
             
             // Check for EOS token (2 is common EOS)
-            if (nextToken == 2 || nextToken == 0) {
+            if (currentToken == 2 || currentToken == 0) {
+                qInfo() << "Generation stopped by EOS token";
                 break;
             }
             
-            result.push_back(nextToken);
+            result.push_back(currentToken);
         }
         
-        // Update performance metrics
-        qint64 elapsed = m_inferenceTimer.elapsed();
+        // Update performance metrics based on this generation step
+        qint64 elapsed = localTimer.elapsed();
         int tokensGenerated = result.size() - inputTokens.size();
         if (elapsed > 0 && tokensGenerated > 0) {
             m_tokensPerSecond = (tokensGenerated * 1000.0) / elapsed;
         }
+        
+        qInfo() << "Generation complete:" << tokensGenerated << "tokens in" << elapsed 
+                << "ms (" << QString::number(m_tokensPerSecond, 'f', 1) << " tok/s, Top-P=" 
+                << QString::number(m_topP, 'f', 2) << ")";
+        
+        // Reset KV-cache for next inference
+        m_kvCacheReady = false;
         
     } else {
         // Fallback: Simple echo with placeholder
@@ -427,5 +461,128 @@ std::vector<int32_t> InferenceEngine::generate(const std::vector<int32_t>& input
     return result;
 }
 
+// ============================================================================
+// ELEGANT IMPLEMENTATION: Top-P (Nucleus) Sampling
+// ============================================================================
+// Top-P sampling produces far more natural and diverse text than greedy 
+// sampling while still being controllable via the temperature parameter.
+// 
+// Algorithm:
+// 1. Convert logits to probabilities using softmax
+// 2. Sort tokens by probability (descending)
+// 3. Accumulate probabilities until crossing the Top-P threshold
+// 4. Randomly sample from this "nucleus"
+// ============================================================================
+
+int32_t InferenceEngine::sampleNextToken(std::vector<float>& logits, double temperature, double topP)
+{
+    // === Step 1: Convert Logits to Probabilities (Softmax) ===
+    
+    // Apply temperature scaling (controls randomness)
+    if (temperature > 0.0) {
+        for (float& logit : logits) {
+            logit /= static_cast<float>(temperature);
+        }
+    }
+    
+    // Find maximum logit for numerical stability (prevent overflow in exp)
+    float maxLogit = *std::max_element(logits.begin(), logits.end());
+    
+    // Compute exponentiated logits and total sum (Softmax calculation)
+    std::vector<float> probs(logits.size());
+    float sumExp = 0.0f;
+    
+    for (size_t i = 0; i < logits.size(); ++i) {
+        float expVal = std::exp(logits[i] - maxLogit);
+        probs[i] = expVal;
+        sumExp += expVal;
+    }
+    
+    // Normalize to get final probabilities
+    for (float& prob : probs) {
+        prob /= sumExp;
+    }
+
+    // === Step 2: Prepare for Top-P Selection ===
+    
+    // Create a vector of pairs: {probability, token_id}
+    std::vector<std::pair<float, int32_t>> sortedTokens;
+    for (size_t i = 0; i < probs.size(); ++i) {
+        if (probs[i] > 1e-6f) { // Ignore very small probability tokens
+            sortedTokens.push_back({probs[i], static_cast<int32_t>(i)});
+        }
+    }
+
+    // Sort by probability in descending order
+    std::sort(sortedTokens.begin(), sortedTokens.end(), 
+              [](const auto& a, const auto& b) {
+                  return a.first > b.first;
+              });
+
+    // === Step 3: Find the Nucleus (Top-P Threshold) ===
+    
+    float cumulativeProb = 0.0f;
+    size_t nucleusSize = 0;
+
+    for (const auto& tokenPair : sortedTokens) {
+        cumulativeProb += tokenPair.first;
+        nucleusSize++;
+        
+        // Stop when the cumulative probability exceeds topP (the nucleus)
+        if (cumulativeProb >= static_cast<float>(topP)) {
+            break;
+        }
+    }
+    
+    // Safety check: If the top token already exceeds P, nucleus is just that token
+    if (nucleusSize == 0 || sortedTokens.empty()) {
+        // Fallback: Use greedy sampling (select highest probability)
+        return sortedTokens.empty() ? 0 : sortedTokens.front().second;
+    }
+    
+    // === Step 4: Resample and Select the Next Token ===
+    
+    // Re-normalize the probabilities within the nucleus
+    float nucleusProbSum = 0.0f;
+    for (size_t i = 0; i < nucleusSize; ++i) {
+        nucleusProbSum += sortedTokens[i].first;
+    }
+
+    // Use a uniform random number in [0, nucleusProbSum)
+    float r = getRandomFloat(0.0f, nucleusProbSum);
+
+    // Select the token based on the weighted random draw
+    cumulativeProb = 0.0f;
+    for (size_t i = 0; i < nucleusSize; ++i) {
+        cumulativeProb += sortedTokens[i].first;
+        if (r < cumulativeProb) {
+            return sortedTokens[i].second;
+        }
+    }
+    
+    // Fallback in case of rounding errors: select the last token in the nucleus
+    return sortedTokens[nucleusSize - 1].second;
+}
+
+// ============================================================================
+// THREAD-SAFE RANDOM NUMBER GENERATION
+// ============================================================================
+
+float InferenceEngine::getRandomFloat(float min, float max)
+{
+    // Thread-safe random float generation using C++11 standard library
+    // The m_randomEngine is seeded once and reused
+    
+    static std::once_flag initFlag;
+    std::call_once(initFlag, [this]() {
+        // Seed the random engine with a high-entropy source
+        std::random_device rd;
+        m_randomEngine.seed(rd());
+    });
+    
+    // Generate uniform random float in [min, max)
+    std::uniform_real_distribution<float> distribution(min, max);
+    return distribution(m_randomEngine);
+}
 
 

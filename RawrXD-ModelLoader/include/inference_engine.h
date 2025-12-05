@@ -1,4 +1,6 @@
 #pragma once
+#include <QObject>
+#include <QString>
 #include <string>
 #include <vector>
 #include <memory>
@@ -8,14 +10,21 @@ class VulkanCompute;
 class GGUFLoader;
 struct VulkanTensor;
 
-class InferenceEngine {
+class InferenceEngine : public QObject {
+    Q_OBJECT
 public:
-    InferenceEngine();
+    InferenceEngine(QObject* parent = nullptr);
     ~InferenceEngine();
 
     bool Initialize(const std::string& model_path);
     std::string GenerateToken(const std::string& prompt, uint32_t max_tokens = 1);
     void Cleanup();
+    bool HotPatchModel(const std::string& model_path);
+    
+public slots:
+    void processCommand(const QString& command);
+    QString processChat(const QString& message);
+    QString analyzeCode(const QString& code);
 
 private:
     bool InitializeVulkan();

@@ -28,6 +28,70 @@
 #pragma comment(lib, "pdh.lib")
 #endif
 
+// Standard output for debug logging
+#include <iostream>
+
+// Additional includes required for the extended implementation
+#include <QJsonDocument>
+#include <QFile>
+#include <QDateTime>
+
+// ---------------------------------------------------------------------------
+// Telemetry class implementation (high‑level wrapper)
+// ---------------------------------------------------------------------------
+
+Telemetry::Telemetry()
+    : is_enabled_(true) {
+    // Initialize the low‑level telemetry subsystem. If it fails we simply
+    // keep the wrapper functional but disabled – this mirrors the original
+    // behaviour where telemetry was optional.
+    if (!telemetry::Initialize()) {
+        is_enabled_ = false;
+    }
+}
+
+Telemetry::~Telemetry() {
+    // Ensure the low‑level subsystem is shut down cleanly.
+    telemetry::Shutdown();
+}
+
+void Telemetry::recordEvent(const QString &event_name, const QJsonObject &metadata) {
+    if (!is_enabled_) return;
+    QJsonObject event;
+    event["name"] = event_name;
+    event["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    event["metadata"] = metadata;
+    events_.append(event);
+    // In a production system we would also stream this event to a logger.
+    std::cout << "Telemetry event recorded: " << event_name.toStdString() << std::endl;
+}
+
+bool Telemetry::saveTelemetry(const QString &filepath) {
+    if (!is_enabled_) return false;
+    QJsonObject root;
+    root["events"] = events_;
+    QJsonDocument doc(root);
+    QFile file(filepath);
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    file.write(doc.toJson());
+    file.close();
+    return true;
+}
+
+void Telemetry::enableTelemetry(bool enable) {
+    is_enabled_ = enable;
+    if (enable) {
+        telemetry::Initialize();
+    } else {
+        telemetry::Shutdown();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Low‑level telemetry namespace implementation (platform specific)
+// ---------------------------------------------------------------------------
+
+
 namespace telemetry {
 
 static IWbemLocator *g_pLocator = nullptr;
@@ -215,7 +279,7 @@ static double QueryGpuUsage() {
     return -1.0;
 }
 
-bool Poll(TelemetrySnapshot &out) {
+bool Poll(TelemetrySnapshot& out) {
     std::lock_guard<std::mutex> guard(g_lock);
     if (!g_initialized) return false;
     out.timeMs = NowMs() - g_startMs;

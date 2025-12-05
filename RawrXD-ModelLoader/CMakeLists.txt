@@ -38,13 +38,13 @@ endif()
 set(Qt6_DIR "C:/Qt/6.7.3/msvc2022_64/lib/cmake/Qt6")
 list(APPEND CMAKE_PREFIX_PATH "C:/Qt/6.7.3/msvc2022_64")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Sql Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Sql Concurrent Test)
 
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_VERSION}")
     add_definitions(-DHAVE_QT_CORE)
     include_directories(${Qt6_INCLUDE_DIRS})
-    link_libraries(Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Concurrent)
+    link_libraries(Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Concurrent Qt6::Test)
 else()
     message(WARNING "Qt6 not found. Qt-based benchmarks will be skipped.")
 endif()
@@ -938,26 +938,96 @@ endif()
 target_compile_definitions(RawrXD-Chromatic PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 
 # Agentic IDE - Advanced AI-powered IDE with terminal integration (Qt-based GUI app)
-# Disabled until all headers and Qt integration are available
-if(FALSE AND Qt6_FOUND)
-    add_executable(RawrXD-AgenticIDE WIN32
+# Enabled with Qt6 6.7.2+ support
+if(Qt6_FOUND AND Qt6_VERSION VERSION_GREATER_EQUAL 6.7.2)
+    message(STATUS "Building RawrXD-AgenticIDE with Qt ${Qt6_VERSION}")
+    
+    # Check for required source files
+    set(AGENTICIDE_SOURCES
         src/agentic_ide_main.cpp
-        src/agentic_ide.cpp
-        src/scalar_server.cpp
-        src/agentic_chat.cpp
-        src/chat_workspace.cpp
-        src/multi_tab_editor.cpp
-        src/terminal_pool.cpp
-        src/agentic_engine.cpp
-        src/chat_interface.cpp
-        src/file_browser.cpp
-        src/inference_engine.cpp
-        src/gguf_loader.cpp
-        src/vulkan_compute.cpp
-        src/transformer_block_scalar.cpp
-        src/settings.cpp
-        src/telemetry.cpp
     )
+    
+    # Check if additional source files exist
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/agentic_ide.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/agentic_ide.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/scalar_server.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/scalar_server.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/agentic_chat.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/agentic_chat.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/chat_workspace.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/chat_workspace.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/multi_tab_editor.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/multi_tab_editor.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/terminal_pool.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/terminal_pool.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/agentic_engine.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/agentic_engine.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/chat_interface.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/chat_interface.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/file_browser.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/file_browser.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/inference_engine.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/inference_engine.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/gguf_loader.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/gguf_loader.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/vulkan_compute.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/vulkan_compute.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/transformer_block_scalar.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/transformer_block_scalar.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/settings.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/settings.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/planning_agent.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/planning_agent.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/telemetry.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/telemetry.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/todo_manager.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/todo_manager.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/todo_dock.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/todo_dock.cpp)
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/inference_engine_stub.cpp")
+        list(APPEND AGENTICIDE_SOURCES src/inference_engine_stub.cpp)
+    endif()
+    
+    # Add headers for MOC processing
+    list(APPEND AGENTICIDE_SOURCES
+        include/agentic_ide.h
+        include/agentic_engine.h
+        include/chat_interface.h
+        include/chat_workspace.h
+        include/multi_tab_editor.h
+        include/terminal_pool.h
+        include/file_browser.h
+        include/planning_agent.h
+        include/inference_engine_stub.hpp
+        include/scalar_server.h
+        include/telemetry.h
+        include/transformer_block_scalar.h
+        include/todo_manager.h
+        include/todo_dock.h
+    )
+    
+    add_executable(RawrXD-AgenticIDE WIN32 ${AGENTICIDE_SOURCES})
+    
+    # Enable Qt MOC for QObject-derived classes (Telemetry, etc.)
+    set_target_properties(RawrXD-AgenticIDE PROPERTIES AUTOMOC ON)
 
     target_include_directories(RawrXD-AgenticIDE PRIVATE 
         ${CMAKE_SOURCE_DIR}
@@ -977,7 +1047,14 @@ if(FALSE AND Qt6_FOUND)
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
+        Qt6::Network
     )
+    
+    # Add Vulkan linkage if available
+    if(Vulkan_FOUND)
+        target_link_libraries(RawrXD-AgenticIDE PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(RawrXD-AgenticIDE PRIVATE HAVE_VULKAN=1)
+    endif()
 
     set_target_properties(RawrXD-AgenticIDE PROPERTIES 
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
@@ -990,8 +1067,32 @@ if(FALSE AND Qt6_FOUND)
         target_compile_options(RawrXD-AgenticIDE PRIVATE -fexceptions -O2)
     endif()
     target_compile_definitions(RawrXD-AgenticIDE PRIVATE _CRT_SECURE_NO_WARNINGS)
+    
+    # Copy Qt DLLs to output directory
+    add_custom_command(TARGET RawrXD-AgenticIDE POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::Core>"
+            "$<TARGET_FILE:Qt6::Gui>"
+            "$<TARGET_FILE:Qt6::Widgets>"
+            "$<TARGET_FILE:Qt6::Network>"
+            "$<TARGET_FILE_DIR:RawrXD-AgenticIDE>"
+        COMMENT "Copying Qt DLLs to output directory"
+    )
+    
+    # Copy Qt platform plugins
+    add_custom_command(TARGET RawrXD-AgenticIDE POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:RawrXD-AgenticIDE>/platforms"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${Qt6_DIR}/../../../plugins/platforms/qwindows$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:RawrXD-AgenticIDE>/platforms/"
+        COMMENT "Copying Qt platform plugins"
+    )
+    
+    message(STATUS "RawrXD-AgenticIDE: Advanced AI-powered IDE enabled with Qt ${Qt6_VERSION}")
+    message(STATUS "AgenticIDE sources: ${AGENTICIDE_SOURCES}")
 else()
-    message(STATUS "Qt6 not found or AgenticIDE build disabled; skipping RawrXD-AgenticIDE target")
+    message(STATUS "Qt6 not found or version < 6.7.2; skipping RawrXD-AgenticIDE target")
 endif()
 
 message(STATUS "RawrXD-ModelLoader configured successfully with Clang C++20")
@@ -1183,6 +1284,98 @@ target_link_libraries(quant_correctness_tests PRIVATE Qt6::Core quant_utils)
 set_target_properties(quant_correctness_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
     AUTOMOC OFF
+)
+
+# Agent Coordinator comprehensive tests (scheduling, cancellation, failure paths)
+add_executable(test_agent_coordinator tests/test_agent_coordinator.cpp)
+target_link_libraries(test_agent_coordinator PRIVATE 
+    Qt6::Core 
+    Qt6::Test 
+    RawrXDOrchestration
+)
+target_include_directories(test_agent_coordinator PRIVATE 
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src/orchestration
+)
+set_target_properties(test_agent_coordinator PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    AUTOMOC ON
+)
+
+# Agent Coordinator integration tests (real GGUF model loading + inference)
+add_executable(test_agent_coordinator_integration 
+    tests/test_agent_coordinator_integration.cpp
+    src/model_loader/model_loader.cpp
+    src/inference_engine_stub.cpp
+    src/qtapp/gguf_server.cpp
+    src/gguf_loader.cpp
+)
+target_link_libraries(test_agent_coordinator_integration PRIVATE 
+    Qt6::Core 
+    Qt6::Test
+    Qt6::Network
+    RawrXDOrchestration
+)
+target_include_directories(test_agent_coordinator_integration PRIVATE 
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src/orchestration
+    ${CMAKE_SOURCE_DIR}/src/model_loader
+    ${CMAKE_SOURCE_DIR}/src/qtapp
+    ${CMAKE_SOURCE_DIR}/include
+)
+set_target_properties(test_agent_coordinator_integration PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    AUTOMOC ON
+)
+
+# KV Cache Infrastructure Test
+if(ENABLE_VULKAN)
+add_executable(test_kv_cache 
+    src/test_kv_cache.cpp
+    src/vulkan_compute.cpp
+)
+target_link_libraries(test_kv_cache PRIVATE Vulkan::Vulkan)
+target_include_directories(test_kv_cache PRIVATE 
+    ${CMAKE_SOURCE_DIR}/include
+    ${Vulkan_INCLUDE_DIRS}
+)
+set_target_properties(test_kv_cache PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+endif()
+
+# GGUF Loader Improvements Test
+add_executable(test_gguf_loader
+    tests/test_gguf_loader.cpp
+    src/gguf_loader.cpp
+)
+target_link_libraries(test_gguf_loader PRIVATE 
+    Qt6::Core
+)
+target_include_directories(test_gguf_loader PRIVATE 
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+set_target_properties(test_gguf_loader PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    AUTOMOC ON
+)
+
+# GGUF Loader Simple Test
+add_executable(test_gguf_loader_simple
+    tests/test_gguf_loader_simple.cpp
+    src/gguf_loader.cpp
+)
+target_link_libraries(test_gguf_loader_simple PRIVATE 
+    Qt6::Core
+)
+target_include_directories(test_gguf_loader_simple PRIVATE 
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+set_target_properties(test_gguf_loader_simple PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+    AUTOMOC ON
 )
 
 # Brutal Gzip Library auto-selects MASM on x64 and NEON on ARM64

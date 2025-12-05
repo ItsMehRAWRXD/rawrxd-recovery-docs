@@ -131,6 +131,10 @@ private:
     QString getCurrentTimestamp() const;
     QJsonDocument parseJsonBody(const QByteArray& body);
     void logRequest(const QString& method, const QString& path, int statusCode);
+    
+    // BOTTLENECK #3 FIX: Lightweight JSON field extraction (streaming-style, no DOM)
+    QString extractJsonField(const QByteArray& json, const QString& fieldName);
+    QJsonArray extractJsonArray(const QByteArray& json, const QString& fieldName);
 
 private:
     InferenceEngine* m_engine;          ///< Inference engine for model operations
