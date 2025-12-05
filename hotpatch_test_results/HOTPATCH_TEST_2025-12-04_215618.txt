@@ -1,0 +1,12 @@
+[21:56:18] [INFO] Starting real hotpatch testing - 2025-12-04_215618
+[21:56:18] [INFO] Configuration: Quick=True, TestTokens=128, TestReps=1
+[21:56:18] [INFO] ✓ gguf_hotpatch_tester.exe found
+[21:56:18] [WARN] GPU monitoring tools not available (expected on AMD ROCm)
+[21:56:18] [INFO] ✓ BigDaddyG-Q2_K-16GB-PRUNED - 15.81GB (Speed)
+[21:56:18] [INFO] ✓ BigDaddyG-Q4_K_M - 36.2GB (Balanced)
+[21:56:18] [INFO] ✓ Codestral-Q4_K_S - 11.79GB (Specialized)
+[21:56:18] [INFO] Testing live RAM modifications with real inference...
+[21:56:18] [INFO] 
+Model: BigDaddyG-Q2_K-16GB-PRUNED
+[21:56:18] [INFO] Measuring baseline performance...
+[21:56:18] [WARN] Baseline measurement failed: 

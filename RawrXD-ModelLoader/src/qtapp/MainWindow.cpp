@@ -4,6 +4,8 @@
 #include "TerminalWidget.h"
 #include "Subsystems.h"
 #include "ActivityBar.h"
+#include "widgets/masm_editor_widget.h"
+#include "widgets/hotpatch_panel.h"
 #include "inference_engine.hpp"
 #include "gguf_server.hpp"
 #include "streaming_inference.hpp"
@@ -128,6 +130,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupAgentSystem();
     setupCommandPalette();
     setupAIChatPanel();
+    setupMASMEditor();
     
     // Setup Ctrl+Shift+P for command palette
     QShortcut* commandPaletteShortcut = new QShortcut(QKeySequence("Ctrl+Shift+P"), this);
@@ -1160,4 +1163,209 @@ void MainWindow::onHotReload() {
         m_hotReload->reloadQuant(m_currentQuantMode);
     }
     statusBar()->showMessage("Hot-reloaded", 2000);
+}
+
+// ============================================================
+// Agent System Setup and Integration
+// ============================================================
+
+void MainWindow::setupAgentSystem() {
+    // Initialize AutoBootstrap (autonomous agent orchestration)
+    m_agentBootstrap = new AutoBootstrap(this);
+    
+    // Initialize HotReload (quantization library hot-reload)
+    m_hotReload = new HotReload(this);
+    
+    // Connect HotReload signals to status bar for feedback
+    connect(m_hotReload, &HotReload::quantReloaded, this, [this](const QString& quantType) {
+        statusBar()->showMessage(tr("✓ Quantization reloaded: %1").arg(quantType), 3000);
+    });
+    
+    connect(m_hotReload, &HotReload::moduleReloaded, this, [this](const QString& moduleName) {
+        statusBar()->showMessage(tr("✓ Module reloaded: %1").arg(moduleName), 3000);
+    });
+    
+    connect(m_hotReload, &HotReload::reloadFailed, this, [this](const QString& error) {
+        statusBar()->showMessage(tr("✗ Reload failed: %1").arg(error), 5000);
+    });
+    
+    // Add Tools menu for agent/hotpatch operations
+    QMenu* toolsMenu = menuBar()->findChild<QMenu*>("ToolsMenu");
+    if (!toolsMenu) {
+        toolsMenu = menuBar()->addMenu("Tools");
+        toolsMenu->setObjectName("ToolsMenu");
+    }
+    
+    // Add Hot Reload action with Ctrl+Shift+R shortcut
+    QAction* hotReloadAction = toolsMenu->addAction("Hot Reload Quantization");
+    hotReloadAction->setShortcut(QKeySequence("Ctrl+Shift+R"));
+    connect(hotReloadAction, &QAction::triggered, this, &MainWindow::onHotReload);
+    
+    // Add separator
+    toolsMenu->addSeparator();
+    
+    // Add Agent Mode actions
+    QMenu* agentModeMenu = toolsMenu->addMenu("Agent Mode");
+    
+    m_agentModeGroup = new QActionGroup(this);
+    
+    QAction* planModeAction = agentModeMenu->addAction("Plan");
+    planModeAction->setCheckable(true);
+    planModeAction->setChecked(true);
+    planModeAction->setData("Plan");
+    m_agentModeGroup->addAction(planModeAction);
+    
+    QAction* agentModeAction = agentModeMenu->addAction("Agent");
+    agentModeAction->setCheckable(true);
+    agentModeAction->setData("Agent");
+    m_agentModeGroup->addAction(agentModeAction);
+    
+    QAction* askModeAction = agentModeMenu->addAction("Ask");
+    askModeAction->setCheckable(true);
+    askModeAction->setData("Ask");
+    m_agentModeGroup->addAction(askModeAction);
+    
+    // Connect mode selection to changeAgentMode
+    connect(m_agentModeGroup, &QActionGroup::triggered, this, [this](QAction* action) {
+        QString mode = action->data().toString();
+        changeAgentMode(mode);
+    });
+    
+    // Add separator
+    toolsMenu->addSeparator();
+    
+    // Add Self-Test Gate action
+    QAction* selfTestAction = toolsMenu->addAction("Run Self-Test Gate");
+    selfTestAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    connect(selfTestAction, &QAction::triggered, this, [this]() {
+        if (canRelease()) {
+            statusBar()->showMessage("✓ Self-test gate passed - ready to release", 3000);
+        } else {
+            statusBar()->showMessage("✗ Self-test gate failed - fix issues before release", 5000);
+        }
+    });
+    
+    // Setup hotpatch panel for real-time event visualization
+    setupHotpatchPanel();
+}
+
+// ============================================================
+// Hotpatch Panel Setup and Integration
+// ============================================================
+
+void MainWindow::setupHotpatchPanel() {
+    // Create Hotpatch Panel widget
+    m_hotpatchPanel = new HotpatchPanel(this);
+    
+    // Create dock widget
+    m_hotpatchPanelDock = new QDockWidget("Hotpatch Events", this);
+    m_hotpatchPanelDock->setWidget(m_hotpatchPanel);
+    m_hotpatchPanelDock->setObjectName("HotpatchPanelDock");
+    m_hotpatchPanelDock->setAllowedAreas(Qt::AllDockWidgetAreas);
+    m_hotpatchPanelDock->setFeatures(QDockWidget::DockWidgetMovable |
+                                      QDockWidget::DockWidgetFloatable |
+                                      QDockWidget::DockWidgetClosable);
+    
+    // Add to bottom dock area by default
+    addDockWidget(Qt::BottomDockWidgetArea, m_hotpatchPanelDock);
+    
+    // Wire HotReload signals to hotpatch panel for event logging
+    connect(m_hotReload, &HotReload::quantReloaded, this, [this](const QString& quantType) {
+        m_hotpatchPanel->logEvent("Quantization Reloaded", quantType, true);
+    });
+    
+    connect(m_hotReload, &HotReload::moduleReloaded, this, [this](const QString& moduleName) {
+        m_hotpatchPanel->logEvent("Module Reloaded", moduleName, true);
+    });
+    
+    connect(m_hotReload, &HotReload::reloadFailed, this, [this](const QString& error) {
+        m_hotpatchPanel->logEvent("Reload Failed", error, false);
+    });
+    
+    // Connect manual reload button in hotpatch panel to onHotReload
+    connect(m_hotpatchPanel, &HotpatchPanel::manualReloadRequested, this, [this](const QString& quantType) {
+        m_currentQuantMode = quantType;
+        onHotReload();
+    });
+    
+    // Add View menu toggle for Hotpatch Panel
+    QMenu* viewMenu = menuBar()->findChild<QMenu*>();
+    if (!viewMenu) {
+        viewMenu = menuBar()->addMenu("View");
+    }
+    
+    QAction* toggleHotpatchAction = viewMenu->addAction("Hotpatch Events");
+    toggleHotpatchAction->setCheckable(true);
+    toggleHotpatchAction->setChecked(true);
+    connect(toggleHotpatchAction, &QAction::triggered, this, [this](bool visible) {
+        toggleHotpatchPanel(visible);
+    });
+}
+
+void MainWindow::toggleHotpatchPanel(bool visible) {
+    if (m_hotpatchPanelDock) {
+        if (visible) {
+            m_hotpatchPanelDock->show();
+        } else {
+            m_hotpatchPanelDock->hide();
+        }
+    }
+}
+
+// ============================================================
+// MASM Text Editor Setup and Integration
+// ============================================================
+
+void MainWindow::setupMASMEditor() {
+    // Create MASM Editor widget
+    m_masmEditor = new MASMEditorWidget(this);
+    
+    // Create dock widget
+    m_masmEditorDock = new QDockWidget("MASM Assembly Editor", this);
+    m_masmEditorDock->setWidget(m_masmEditor);
+    m_masmEditorDock->setObjectName("MASMEditorDock");
+    m_masmEditorDock->setAllowedAreas(Qt::AllDockWidgetAreas);
+    m_masmEditorDock->setFeatures(QDockWidget::DockWidgetMovable |
+                                   QDockWidget::DockWidgetFloatable |
+                                   QDockWidget::DockWidgetClosable);
+    
+    // Add to right dock area by default
+    addDockWidget(Qt::RightDockWidgetArea, m_masmEditorDock);
+    
+    // Connect editor signals to main window
+    connect(m_masmEditor, &MASMEditorWidget::tabChanged, this, [this](int index) {
+        statusBar()->showMessage(tr("Switched to: %1").arg(m_masmEditor->getTabName(index)), 2000);
+    });
+    
+    connect(m_masmEditor, &MASMEditorWidget::contentModified, this, [this](int index) {
+        QString modified = m_masmEditor->isModified(index) ? " *" : "";
+        statusBar()->showMessage(tr("Modified: %1%2").arg(m_masmEditor->getTabName(index)).arg(modified), 1000);
+    });
+    
+    connect(m_masmEditor, &MASMEditorWidget::cursorPositionChanged, this, [this](int line, int col) {
+        statusBar()->showMessage(tr("Line %1, Column %2").arg(line).arg(col), 1000);
+    });
+    
+    // Add View menu toggle for MASM Editor
+    QMenu* viewMenu = menuBar()->findChild<QMenu*>();
+    if (!viewMenu) {
+        viewMenu = menuBar()->addMenu("View");
+    }
+    
+    QAction* toggleMASMAction = viewMenu->addAction("MASM Assembly Editor");
+    toggleMASMAction->setCheckable(true);
+    toggleMASMAction->setChecked(true);
+    connect(toggleMASMAction, &QAction::triggered, this, [this](bool visible) {
+        toggleMASMEditor(visible);
+    });
+}
+
+void MainWindow::toggleMASMEditor(bool visible) {
+    if (m_masmEditorDock) {
+        if (visible) {
+            m_masmEditorDock->show();
+        } else {
+            m_masmEditorDock->hide();
+        }
+    }
 }

@@ -1,0 +1,26 @@
+[21:46:25] [INFO] Starting real hotpatch testing - 2025-12-04_214625
+[21:46:25] [INFO] Configuration: Quick=True, TestTokens=128, TestReps=1
+[21:46:25] [INFO] ✓ gpu_inference_benchmark.exe found
+[21:46:25] [INFO] ✓ simple_gpu_test.exe found
+[21:46:25] [WARN] GPU monitoring tools not available (expected on AMD ROCm)
+[21:46:25] [INFO] ✓ BigDaddyG-Q2_K-16GB-PRUNED - 15.81GB (Speed)
+[21:46:25] [INFO] ✓ BigDaddyG-Q4_K_M - 36.2GB (Balanced)
+[21:46:25] [INFO] ✓ Codestral-Q4_K_S - 11.79GB (Specialized)
+[21:46:25] [INFO] Testing live RAM modifications with real inference...
+[21:46:25] [INFO] 
+Model: BigDaddyG-Q2_K-16GB-PRUNED
+[21:46:25] [INFO] Measuring baseline performance...
+[21:46:25] [WARN] Failed to parse baseline results
+[21:46:25] [INFO] 
+Model: BigDaddyG-Q4_K_M
+[21:46:25] [INFO] Measuring baseline performance...
+[21:46:25] [WARN] Failed to parse baseline results
+[21:46:25] [INFO] 
+Model: Codestral-Q4_K_S
+[21:46:25] [INFO] Measuring baseline performance...
+[21:46:25] [WARN] Failed to parse baseline results
+[21:46:25] [INFO] Testing persistent file modifications...
+[21:46:25] [INFO] 
+Model: BigDaddyG-Q2_K-16GB-PRUNED
+[21:46:25] [INFO] Testing byte-level patch...
+[21:46:25] [INFO] Creating test copy: C:\Users\HiH8e\AppData\Local\Temp\fbc5011a-1bdf-47f7-b611-f82959eb5e84.gguf

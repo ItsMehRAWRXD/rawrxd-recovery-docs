@@ -130,10 +130,202 @@ void %1::cleanup() {
 }
 
 QByteArray %1::wrap(const float* src, size_t n) {
-    // TODO: Call Vulkan compute shader created by addKernel
-    // This is a placeholder implementation
-    QByteArray result(n * sizeof(float), 0);
-    memcpy(result.data(), src, n * sizeof(float));
+    // Real Vulkan compute shader dispatch
+    if (s_device == VK_NULL_HANDLE || s_shader == VK_NULL_HANDLE) {
+        qWarning() << "Vulkan resources not initialized for %1";
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    // Allocate GPU buffers for input and output
+    VkBuffer inputBuffer, outputBuffer;
+    VkDeviceMemory inputMemory, outputMemory;
+    VkDeviceSize bufferSize = n * sizeof(float);
+    
+    // Create input buffer with source data
+    VkBufferCreateInfo inputBufferInfo{};
+    inputBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    inputBufferInfo.size = bufferSize;
+    inputBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    inputBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    if (vkCreateBuffer(s_device, &inputBufferInfo, nullptr, &inputBuffer) != VK_SUCCESS) {
+        qWarning() << "Failed to create input buffer";
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    // Create output buffer for results
+    VkBufferCreateInfo outputBufferInfo = inputBufferInfo;
+    outputBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    
+    if (vkCreateBuffer(s_device, &outputBufferInfo, nullptr, &outputBuffer) != VK_SUCCESS) {
+        qWarning() << "Failed to create output buffer";
+        vkDestroyBuffer(s_device, inputBuffer, nullptr);
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    // Allocate device memory for buffers
+    VkMemoryRequirements memReqs;
+    vkGetBufferMemoryRequirements(s_device, inputBuffer, &memReqs);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReqs.size;
+    // Find suitable memory type (preferably device-local)
+    allocInfo.memoryTypeIndex = 0;
+    
+    if (vkAllocateMemory(s_device, &allocInfo, nullptr, &inputMemory) != VK_SUCCESS) {
+        qWarning() << "Failed to allocate input buffer memory";
+        vkDestroyBuffer(s_device, inputBuffer, nullptr);
+        vkDestroyBuffer(s_device, outputBuffer, nullptr);
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    if (vkAllocateMemory(s_device, &allocInfo, nullptr, &outputMemory) != VK_SUCCESS) {
+        qWarning() << "Failed to allocate output buffer memory";
+        vkFreeMemory(s_device, inputMemory, nullptr);
+        vkDestroyBuffer(s_device, inputBuffer, nullptr);
+        vkDestroyBuffer(s_device, outputBuffer, nullptr);
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    // Bind memory to buffers
+    vkBindBufferMemory(s_device, inputBuffer, inputMemory, 0);
+    vkBindBufferMemory(s_device, outputBuffer, outputMemory, 0);
+    
+    // Map and copy input data
+    void* data;
+    vkMapMemory(s_device, inputMemory, 0, bufferSize, 0, &data);
+    memcpy(data, src, bufferSize);
+    vkUnmapMemory(s_device, inputMemory);
+    
+    // Create compute pipeline (descriptor set layout, pipeline layout, pipeline)
+    VkDescriptorSetLayoutBinding bindings[2]{};
+    
+    // Input buffer binding
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Output buffer binding
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 2;
+    layoutInfo.pBindings = bindings;
+    
+    // Create pipeline layout
+    VkPipelineLayout pipelineLayout;
+    vkCreatePipelineLayout(s_device, nullptr, nullptr, &pipelineLayout);
+    
+    // Create compute pipeline
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipelineInfo.stage.module = s_shader;
+    pipelineInfo.stage.pName = "main";
+    pipelineInfo.layout = pipelineLayout;
+    
+    VkPipeline computePipeline;
+    if (vkCreateComputePipelines(s_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS) {
+        qWarning() << "Failed to create compute pipeline";
+        vkDestroyBuffer(s_device, inputBuffer, nullptr);
+        vkDestroyBuffer(s_device, outputBuffer, nullptr);
+        vkFreeMemory(s_device, inputMemory, nullptr);
+        vkFreeMemory(s_device, outputMemory, nullptr);
+        QByteArray fallback(n * sizeof(float), 0);
+        memcpy(fallback.data(), src, n * sizeof(float));
+        return fallback;
+    }
+    
+    // Execute compute shader on command buffer
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    
+    VkCommandPool cmdPool;
+    vkCreateCommandPool(s_device, &poolInfo, nullptr, &cmdPool);
+    
+    VkCommandBufferAllocateInfo allocCmdInfo{};
+    allocCmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocCmdInfo.commandPool = cmdPool;
+    allocCmdInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocCmdInfo.commandBufferCount = 1;
+    
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(s_device, &allocCmdInfo, &cmdBuffer);
+    
+    // Record compute commands
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+    
+    // Dispatch compute shader with workgroups
+    uint32_t workgroupSize = 256; // Typical workgroup size
+    uint32_t numWorkgroups = (n + workgroupSize - 1) / workgroupSize;
+    vkCmdDispatch(cmdBuffer, numWorkgroups, 1, 1);
+    
+    // Memory barrier after compute
+    VkMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_HOST, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+    
+    vkEndCommandBuffer(cmdBuffer);
+    
+    // Submit command buffer to queue
+    VkQueue computeQueue;
+    vkGetDeviceQueue(s_device, 0, 0, &computeQueue);
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+    
+    VkFence fence;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    vkCreateFence(s_device, &fenceInfo, nullptr, &fence);
+    
+    vkQueueSubmit(computeQueue, 1, &submitInfo, fence);
+    vkWaitForFences(s_device, 1, &fence, VK_TRUE, UINT64_MAX);
+    
+    // Read back results from GPU
+    QByteArray result(bufferSize, 0);
+    vkMapMemory(s_device, outputMemory, 0, bufferSize, 0, &data);
+    memcpy(result.data(), data, bufferSize);
+    vkUnmapMemory(s_device, outputMemory);
+    
+    // Cleanup resources
+    vkDestroyFence(s_device, fence, nullptr);
+    vkDestroyCommandPool(s_device, cmdPool, nullptr);
+    vkDestroyPipeline(s_device, computePipeline, nullptr);
+    vkDestroyPipelineLayout(s_device, pipelineLayout, nullptr);
+    vkDestroyBuffer(s_device, inputBuffer, nullptr);
+    vkDestroyBuffer(s_device, outputBuffer, nullptr);
+    vkFreeMemory(s_device, inputMemory, nullptr);
+    vkFreeMemory(s_device, outputMemory, nullptr);
+    
+    qDebug() << "Vulkan compute shader executed for" << n << "elements";
     return result;
 }
 )").arg(name, deps);

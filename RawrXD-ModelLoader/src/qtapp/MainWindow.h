@@ -84,6 +84,8 @@ class CommandPalette;
 class AIChatPanel;
 class CommandPalette;
 class AIChatPanel;
+class MASMEditorWidget;
+class HotpatchPanel;
 
 /* ============================================================ */
 /**
@@ -297,6 +299,8 @@ private slots: /* ----------  new IDE-wide slots  ---------- */
     void toggleMacroRecorder(bool visible);
     void toggleAICompletionCache(bool visible);
     void toggleLanguageClientHost(bool visible);
+    void toggleMASMEditor(bool visible);
+    void toggleHotpatchPanel(bool visible);
 
 private: /* ---------------  UI creators  --------------- */
     QWidget* createGoalBar();
@@ -323,6 +327,8 @@ private: /* ---------------  UI creators  --------------- */
     void setupAgentSystem();
     void setupCommandPalette();
     void setupAIChatPanel();
+    void setupMASMEditor();
+    void setupHotpatchPanel();
     void restoreSession();
     void saveSession();
     
@@ -465,6 +471,14 @@ private: /* ---------------  new IDE members  --------------- */
     /* Autonomous Agent System */
     class AutoBootstrap* m_agentBootstrap{};
     class HotReload* m_hotReload{};
+
+    /* MASM Text Editor */
+    class MASMEditorWidget* m_masmEditor{};
+    QDockWidget* m_masmEditorDock{};
+
+    /* Hotpatch Panel */
+    class HotpatchPanel* m_hotpatchPanel{};
+    QDockWidget* m_hotpatchPanelDock{};
 
     /* VS Code-like Layout Components */
     class ActivityBar* m_activityBar{};

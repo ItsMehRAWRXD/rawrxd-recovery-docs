@@ -21,8 +21,8 @@ $testModels = @(
     @{ Name = "Codestral-Q4_K_S"; Path = "d:\OllamaModels\Codestral-22B-v0.1-hf.Q4_K_S.gguf"; Size = 11.79; Type = "Specialized" }
 )
 
-$benchmarkExe = "d:\temp\RawrXD-q8-wire\gpu_inference_benchmark.exe"
-$simpleTestExe = "d:\temp\RawrXD-q8-wire\simple_gpu_test.exe"
+# Updated to use the new gguf_hotpatch_tester tool
+$hotpatchTesterExe = "d:\temp\RawrXD-q8-wire\RawrXD-ModelLoader\build\bin\Release\gguf_hotpatch_tester.exe"
 $resultsDir = "d:\temp\RawrXD-q8-wire\hotpatch_test_results"
 $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $logFile = "$resultsDir\HOTPATCH_TEST_$timestamp.txt"
@@ -69,24 +69,31 @@ function Log-Message {
     Add-Content -Path $logFile -Value $logEntry
 }
 
-function Test-Benchmark-Tool {
-    if (-not (Test-Path $benchmarkExe)) {
-        Log-Message "ERROR: Benchmark tool not found at $benchmarkExe" -Level "ERROR"
-        Log-Message "Building gpu_inference_benchmark..." -Level "WARN"
+function Test-Hotpatch-Tool {
+    if (-not (Test-Path $hotpatchTesterExe)) {
+        Log-Message "ERROR: GGUF hotpatch tester not found at $hotpatchTesterExe" -Level "ERROR"
+        Log-Message "Building gguf_hotpatch_tester..." -Level "WARN"
         
         # Attempt to build
         try {
-            $buildResult = cmake --build "d:\temp\RawrXD-q8-wire\build" --config Release --target gpu_inference_benchmark 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Log-Message "Benchmark built successfully"
+            Push-Location "d:\temp\RawrXD-q8-wire\RawrXD-ModelLoader"
+            $buildResult = cmake --build build --config Release --target gguf_hotpatch_tester 2>&1
+            Pop-Location
+            
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $hotpatchTesterExe)) {
+                Log-Message "Hotpatch tester built successfully"
                 return $true
             }
         } catch {
-            Log-Message "Failed to build benchmark: $_" -Level "ERROR"
+            Log-Message "Failed to build hotpatch tester: $_" -Level "ERROR"
+            Pop-Location
         }
         
+        Log-Message "ERROR: Cannot proceed without hotpatch tester tool" -Level "ERROR"
         return $false
     }
+    
+    Log-Message "✓ gguf_hotpatch_tester.exe found"
     return $true
 }
 
@@ -96,25 +103,34 @@ function Measure-Baseline {
     Log-Message "Measuring baseline performance..."
     
     try {
-        $output = & $benchmarkExe --model "$ModelPath" --tokens $Tokens --gpu 2>&1
+        # Run the hotpatch tester and parse JSON output
+        $output = & $hotpatchTesterExe --model "$ModelPath" --tokens $Tokens --prompt "Test baseline performance" 2>&1 | Out-String
         
-        if ($LASTEXITCODE -eq 0) {
-            # Parse TPS from output
-            $tpsMatch = $output | Select-String -Pattern "(\d+\.?\d*)\s*(?:tokens?|TPS|tok/s)" | Select-Object -First 1
+        # Parse JSON result
+        try {
+            $json = $output | ConvertFrom-Json
             
-            if ($tpsMatch) {
-                $tps = [double]($tpsMatch.Matches[0].Groups[1].Value)
-                Log-Message "Baseline: $tps TPS"
-                return $tps
+            if ($json.success) {
+                return @{
+                    Success = $true
+                    TPS = $json.tokens_per_sec
+                    TotalTimeMs = $json.total_time_ms
+                    LoadTimeMs = $json.load_time_ms
+                    GPUEnabled = $json.gpu_enabled
+                    GPUBackend = $json.gpu_backend
+                }
+            } else {
+                Log-Message "Baseline measurement failed: $($json.error)" -Level "WARN"
+                return @{ Success = $false; Error = $json.error }
             }
+        } catch {
+            Log-Message "Failed to parse JSON output: $_" -Level "WARN"
+            Log-Message "Raw output: $output" -Level "DEBUG"
+            return @{ Success = $false; Error = "JSON parse error" }
         }
-        
-        Log-Message "Failed to parse baseline results" -Level "WARN"
-        return 0
-        
     } catch {
-        Log-Message "Baseline measurement error: $_" -Level "ERROR"
-        return 0
+        Log-Message "Benchmark execution failed: $_" -Level "ERROR"
+        return @{ Success = $false; Error = $_.Exception.Message }
     }
 }
 
@@ -423,13 +439,10 @@ Log-Message "Configuration: Quick=$Quick, TestTokens=$testTokens, TestReps=$test
 # Verify tools
 Write-Section "Verifying Test Tools"
 
-if (-not (Test-Benchmark-Tool)) {
-    Log-Message "ERROR: Cannot proceed without benchmark tool" -Level "ERROR"
+if (-not (Test-Hotpatch-Tool)) {
+    Log-Message "ERROR: Cannot proceed without hotpatch tester tool" -Level "ERROR"
     exit 1
 }
-
-Log-Message "✓ gpu_inference_benchmark.exe found"
-Log-Message "✓ simple_gpu_test.exe found"
 
 # Check VRAM
 Write-Section "Checking GPU Status"
@@ -472,30 +485,34 @@ if (-not $ByteOnly -and -not $ServerOnly -and -not $CoordinatedOnly) {
         Log-Message "`nModel: $($model.Name)"
         $baseline = Measure-Baseline -ModelPath $model.Path -Tokens $testTokens
         
-        if ($baseline -gt 0) {
+        if ($baseline.Success) {
+            Log-Message "Baseline: $($baseline.TPS) TPS (GPU: $($baseline.GPUEnabled), Backend: $($baseline.GPUBackend))"
+            
             # Test 1: Weight scaling
             $result1 = Test-Memory-Patch -ModelPath $model.Path -ModelName $model.Name `
-                -Operation "scale_weights" -Parameter 1.05 -BaselineTPS $baseline
+                -Operation "scale_weights" -Parameter 1.05 -BaselineTPS $baseline.TPS
             $results.MemoryLayer += @{
                 Model = $model.Name
                 Operation = "scale_weights"
                 Success = $result1.Success
-                Baseline = $baseline
+                Baseline = $baseline.TPS
                 Patched = $result1.PatchedTPS
                 Delta = $result1.PerformanceDelta
             }
             
             # Test 2: Attention scaling
             $result2 = Test-Memory-Patch -ModelPath $model.Path -ModelName $model.Name `
-                -Operation "attention_scale" -Parameter 0.9 -BaselineTPS $baseline
+                -Operation "attention_scale" -Parameter 0.9 -BaselineTPS $baseline.TPS
             $results.MemoryLayer += @{
                 Model = $model.Name
                 Operation = "attention_scale"
                 Success = $result2.Success
-                Baseline = $baseline
+                Baseline = $baseline.TPS
                 Patched = $result2.PatchedTPS
                 Delta = $result2.PerformanceDelta
             }
+        } else {
+            Log-Message "Skipping model due to baseline failure: $($baseline.Error)" -Level "WARN"
         }
     }
 }

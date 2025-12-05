@@ -1,0 +1,5 @@
+[21:42:59] [INFO] Starting real hotpatch testing - 2025-12-04_214259
+[21:42:59] [INFO] Configuration: Quick=True, TestTokens=128, TestReps=1
+[21:42:59] [ERROR] ERROR: Benchmark tool not found at d:\temp\RawrXD-q8-wire\gpu_inference_benchmark.exe
+[21:42:59] [WARN] Building gpu_inference_benchmark...
+[21:42:59] [ERROR] ERROR: Cannot proceed without benchmark tool

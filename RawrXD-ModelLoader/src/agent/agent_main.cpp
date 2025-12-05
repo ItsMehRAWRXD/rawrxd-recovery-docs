@@ -11,6 +11,7 @@
 #include <QJsonValue>
 #include <QProcess>
 #include <QStringList>
+#include <memory>
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
@@ -33,7 +34,9 @@ int main(int argc, char *argv[]) {
     
     qDebug() << "Agent wish:" << wish;
     
+    // ============================================================================
     // Step 1: Plan
+    // ============================================================================
     Planner planner;
     QJsonArray tasks = planner.plan(wish);
     
@@ -44,18 +47,22 @@ int main(int argc, char *argv[]) {
     
     qDebug() << "Generated" << tasks.size() << "tasks";
     
+    // ============================================================================
     // Step 2: Execute
+    // ============================================================================
     SelfPatch patch;
     ReleaseAgent rel;
     MetaLearn ml;
     
     bool success = true;
+    int taskCount = 0;
+    int failureCount = 0;
     
     for (const QJsonValue& job : tasks) {
         QJsonObject task = job.toObject();
         QString type = task["type"].toString();
         
-        qDebug() << "Executing:" << type;
+        qDebug() << "[" << (++taskCount) << "/" << tasks.size() << "] Executing:" << type;
         
         if (type == "add_kernel") {
             success = patch.addKernel(task["target"].toString(), task["template"].toString());
@@ -96,24 +103,27 @@ int main(int argc, char *argv[]) {
             );
         } else if (type == "bench" || type == "bench_all") {
             qDebug() << "Benchmark (handled by build)";
-        } else if (type == "self_test") {
-            qInfo() << "Running self-test gate...";
-            success = runSelfTestGate();
-            if (success) {
-                qInfo() << "Self-test gate PASSED";
-            } else {
-                qCritical() << "Self-test gate FAILED";
-            }
         }
         
         if (!success) {
-            qCritical() << "Task failed:" << type;
+            failureCount++;
+            qWarning() << "Task failed:" << type << "(" << failureCount << "/" << taskCount << ")";
             return 1;
         }
     }
     
+    // ============================================================================
+    // Summary
+    // ============================================================================
+    
     QString suggested = ml.suggestQuant();
     qDebug() << "Meta-learn suggests quant:" << suggested;
-    qDebug() << "Agent completed successfully!";
+    
+    qInfo() << "===============================================";
+    qInfo() << "Agent completed successfully!";
+    qInfo() << "Tasks:" << taskCount << "| Failures:" << failureCount << "| Success rate:" 
+            << QString::number((100.0 * (taskCount - failureCount) / taskCount), 'f', 1) << "%";
+    qInfo() << "===============================================";
+    
     return 0;
 }

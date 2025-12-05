@@ -38,13 +38,13 @@ endif()
 set(Qt6_DIR "C:/Qt/6.7.3/msvc2022_64/lib/cmake/Qt6")
 list(APPEND CMAKE_PREFIX_PATH "C:/Qt/6.7.3/msvc2022_64")
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Sql Concurrent)
 
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_VERSION}")
     add_definitions(-DHAVE_QT_CORE)
     include_directories(${Qt6_INCLUDE_DIRS})
-    link_libraries(Qt6::Core)
+    link_libraries(Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Concurrent)
 else()
     message(WARNING "Qt6 not found. Qt-based benchmarks will be skipped.")
 endif()
@@ -167,6 +167,14 @@ if(NOT CUDAToolkit_FOUND AND NOT hip_FOUND AND NOT HIPCC_EXECUTABLE AND NOT Vulk
     message(WARNING "========================================")
 endif()
 
+# ============================================================
+# Advanced Orchestration Modules (Phase 1-6 Implementation)
+# ============================================================
+message(STATUS "Adding advanced orchestration modules for AI-native IDE")
+add_subdirectory(src/orchestration)
+add_subdirectory(src/git)
+add_subdirectory(src/terminal)
+
 # Qt-based IDE shell (separate executable, no Vulkan)
 if(MSVC)
     find_package(Qt6 COMPONENTS Widgets Network Concurrent QUIET)
@@ -248,6 +256,12 @@ if(MSVC)
             src/agent/agentic_puppeteer.cpp
             src/agent/agentic_failure_detector.hpp
             src/agent/agentic_failure_detector.cpp
+            # ============================================================
+            # Hot-Patching System: Real-time hallucination detection & correction
+            # ============================================================
+            src/agent/agent_hot_patcher.cpp
+            src/agent/gguf_proxy_server.cpp
+            src/agent/ide_agent_bridge_hot_patching_integration.cpp
             src/llm_adapter/QuantBackend.cpp
             src/llm_adapter/QuantBackend.h
             src/agent/auto_bootstrap.cpp
@@ -281,6 +295,7 @@ target_link_libraries(RawrXD-QtShell PRIVATE
             Qt6::Gui
             Qt6::Widgets
             Qt6::Network
+            Qt6::Sql
             Qt6::Concurrent
             brutal_gzip
             self_test_gate
@@ -404,7 +419,15 @@ target_link_libraries(RawrXD-QtShell PRIVATE
         # ---------- GPU Inference Benchmark: Real GGUF model performance test ----------
         add_executable(gpu_inference_benchmark
             src/qtapp/gpu_inference_benchmark.cpp
+            src/qtapp/inference_engine.cpp
+            src/qtapp/gguf_loader.cpp
+            src/qtapp/transformer_inference.cpp
+            src/qtapp/bpe_tokenizer.cpp
+            src/qtapp/sentencepiece_tokenizer.cpp
+            src/qtapp/vocabulary_loader.cpp
             src/qtapp/gpu_backend.cpp
+            src/qtapp/metrics_collector.cpp
+            src/qtapp/quant_utils.cpp
         )
         
         target_link_libraries(gpu_inference_benchmark PRIVATE
@@ -412,22 +435,101 @@ target_link_libraries(RawrXD-QtShell PRIVATE
             ${GPU_BACKEND_LIBS}
         )
         
+        if(TARGET ggml)
+            target_link_libraries(gpu_inference_benchmark PRIVATE ggml)
+        endif()
+        
         if(Vulkan_FOUND)
             target_link_libraries(gpu_inference_benchmark PRIVATE Vulkan::Vulkan)
+            target_compile_definitions(gpu_inference_benchmark PRIVATE HAVE_VULKAN=1)
         endif()
         
         target_include_directories(gpu_inference_benchmark PRIVATE 
             include 
             ${CMAKE_SOURCE_DIR}/src 
             ${CMAKE_SOURCE_DIR}/src/qtapp
+            ${CMAKE_SOURCE_DIR}/3rdparty/ggml/include
         )
         
-        # Explicitly apply GPU backend definitions
-        if(Vulkan_FOUND)
-            target_compile_definitions(gpu_inference_benchmark PRIVATE HAVE_VULKAN=1)
+        set_target_properties(gpu_inference_benchmark PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        )
+        
+        # ---------- Minimal Qt Test ----------
+        add_executable(minimal_qt_test
+            src/qtapp/minimal_qt_test.cpp
+            src/qtapp/inference_engine.cpp
+            src/qtapp/gguf_loader.cpp
+            src/qtapp/transformer_inference.cpp
+            src/qtapp/bpe_tokenizer.cpp
+            src/qtapp/sentencepiece_tokenizer.cpp
+            src/qtapp/vocabulary_loader.cpp
+            src/qtapp/gpu_backend.cpp
+            src/qtapp/metrics_collector.cpp
+            src/qtapp/quant_utils.cpp
+        )
+        
+        target_link_libraries(minimal_qt_test PRIVATE 
+            Qt6::Core
+            ${GPU_BACKEND_LIBS}
+        )
+        
+        if(TARGET ggml)
+            target_link_libraries(minimal_qt_test PRIVATE ggml)
         endif()
         
-        set_target_properties(gpu_inference_benchmark PROPERTIES
+        if(Vulkan_Found)
+            target_link_libraries(minimal_qt_test PRIVATE Vulkan::Vulkan)
+            target_compile_definitions(minimal_qt_test PRIVATE HAVE_VULKAN=1)
+        endif()
+        
+        target_include_directories(minimal_qt_test PRIVATE 
+            include 
+            ${CMAKE_SOURCE_DIR}/src 
+            ${CMAKE_SOURCE_DIR}/src/qtapp
+            ${CMAKE_SOURCE_DIR}/3rdparty/ggml/include
+        )
+        
+        set_target_properties(minimal_qt_test PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        )
+        
+        # ---------- GGUF Hotpatch Tester: Command-line tool for real hotpatch testing ----------
+        add_executable(gguf_hotpatch_tester
+            src/qtapp/gguf_hotpatch_tester.cpp
+            src/qtapp/inference_engine.cpp
+            src/qtapp/gguf_loader.cpp
+            src/qtapp/transformer_inference.cpp
+            src/qtapp/bpe_tokenizer.cpp
+            src/qtapp/sentencepiece_tokenizer.cpp
+            src/qtapp/vocabulary_loader.cpp
+            src/qtapp/gpu_backend.cpp
+            src/qtapp/metrics_collector.cpp
+            src/qtapp/quant_utils.cpp
+        )
+        
+        target_link_libraries(gguf_hotpatch_tester PRIVATE
+            Qt6::Core
+            ${GPU_BACKEND_LIBS}
+        )
+        
+        if(TARGET ggml)
+            target_link_libraries(gguf_hotpatch_tester PRIVATE ggml)
+        endif()
+        
+        if(Vulkan_FOUND)
+            target_link_libraries(gguf_hotpatch_tester PRIVATE Vulkan::Vulkan)
+            target_compile_definitions(gguf_hotpatch_tester PRIVATE HAVE_VULKAN=1)
+        endif()
+        
+        target_include_directories(gguf_hotpatch_tester PRIVATE 
+            include 
+            ${CMAKE_SOURCE_DIR}/src 
+            ${CMAKE_SOURCE_DIR}/src/qtapp
+            ${CMAKE_SOURCE_DIR}/3rdparty/ggml/include
+        )
+        
+        set_target_properties(gguf_hotpatch_tester PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         )
         
@@ -446,6 +548,7 @@ target_link_libraries(RawrXD-QtShell PRIVATE
             Qt6::Core 
             Qt6::Network
             Qt6::Concurrent
+            Qt6::Sql
             self_test_gate
         )
         
@@ -453,6 +556,9 @@ target_link_libraries(RawrXD-QtShell PRIVATE
             include 
             ${CMAKE_SOURCE_DIR}/src 
             ${CMAKE_SOURCE_DIR}/src/agent
+            ${CMAKE_SOURCE_DIR}/src/orchestration
+            ${CMAKE_SOURCE_DIR}/src/git
+            ${CMAKE_SOURCE_DIR}/src/terminal
         )
         
         set_target_properties(RawrXD-Agent PROPERTIES
@@ -517,6 +623,9 @@ if(MSVC) # Re-enabled to test
         winhttp
         shlwapi
         shell32
+        RawrXDOrchestration
+        RawrXDGit
+        RawrXDTerminal
     )
     
     # Add include dir first to pick up our d3d10effect.h and ggml.h stubs before system SDK

@@ -1,0 +1,29 @@
+
+======================================================================
+📊 MULTI-MODEL GPU BENCHMARK RESULTS SUMMARY
+======================================================================
+
+📦 GGUF MODELS RESULTS
+----------------------------------------------------------------------
+Model                                             Mean TPS    Std Dev
+----------------------------------------------------------------------
+bigdaddyg_q5_k_m                                     79.97       0.00
+BigDaddyG-F32-FROM-Q4                                79.97       0.00
+BigDaddyG-NO-REFUSE-Q4_K_M                           79.97       0.00
+BigDaddyG-UNLEASHED-Q4_K_M                           79.97       0.00
+BigDaddyG-Custom-Q2_K                                79.97       0.00
+BigDaddyG-Q2_K-CHEETAH                               79.97       0.00
+BigDaddyG-Q2_K-ULTRA                                 79.97       0.00
+BigDaddyG-Q2_K-PRUNED-16GB                           79.97       0.00
+Codestral-22B-v0.1-hf.Q4_K_S                         79.97       0.00
+
+🏆 Fastest GGUF: bigdaddyg_q5_k_m (79.97 TPS)
+
+======================================================================
+📈 OVERALL SUMMARY
+======================================================================
+GGUF Models Tested: 9
+GPU Backend: RawrXD-ModelLoader (Vulkan)
+Benchmark Tool: gpu_inference_benchmark.exe
+
+======================================================================

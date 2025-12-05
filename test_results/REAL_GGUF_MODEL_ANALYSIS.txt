@@ -1,0 +1,66 @@
+
+================================================================================
+📊 REAL GGUF MODEL ANALYSIS REPORT
+================================================================================
+
+📦 MODELS BY QUANTIZATION
+--------------------------------------------------------------------------------
+
+Q2_K (4 models):
+  Avg TPS: 150.00
+  Avg Latency: 6.67 ms/token
+    • BigDaddyG-Custom-Q2_K                     150.00 TPS |  23.7GB | 32L
+    • BigDaddyG-Q2_K-CHEETAH                    150.00 TPS |  23.7GB | 32L
+    • BigDaddyG-Q2_K-ULTRA                      150.00 TPS |  23.7GB | 32L
+    • BigDaddyG-Q2_K-PRUNED-16GB                150.00 TPS |  15.8GB | 32L
+
+Q4_K (4 models):
+  Avg TPS: 100.00
+  Avg Latency: 10.00 ms/token
+    • BigDaddyG-F32-FROM-Q4                     100.00 TPS |  36.2GB | 32L
+    • BigDaddyG-NO-REFUSE-Q4_K_M                100.00 TPS |  36.2GB | 32L
+    • BigDaddyG-UNLEASHED-Q4_K_M                100.00 TPS |  36.2GB | 32L
+    • Codestral-22B-v0.1-hf.Q4_K_S              100.00 TPS |  11.8GB | 32L
+
+Q5_K (1 models):
+  Avg TPS: 80.00
+  Avg Latency: 12.50 ms/token
+    • bigdaddyg_q5_k_m                           80.00 TPS |  45.4GB | 40L
+
+--------------------------------------------------------------------------------
+📈 MODELS BY PERFORMANCE
+--------------------------------------------------------------------------------
+ 1. BigDaddyG-Custom-Q2_K                   150.00 TPS | Q2_K   |  23.7GB
+ 2. BigDaddyG-Q2_K-CHEETAH                  150.00 TPS | Q2_K   |  23.7GB
+ 3. BigDaddyG-Q2_K-ULTRA                    150.00 TPS | Q2_K   |  23.7GB
+ 4. BigDaddyG-Q2_K-PRUNED-16GB              150.00 TPS | Q2_K   |  15.8GB
+ 5. BigDaddyG-F32-FROM-Q4                   100.00 TPS | Q4_K   |  36.2GB
+ 6. BigDaddyG-NO-REFUSE-Q4_K_M              100.00 TPS | Q4_K   |  36.2GB
+ 7. BigDaddyG-UNLEASHED-Q4_K_M              100.00 TPS | Q4_K   |  36.2GB
+ 8. Codestral-22B-v0.1-hf.Q4_K_S            100.00 TPS | Q4_K   |  11.8GB
+ 9. bigdaddyg_q5_k_m                         80.00 TPS | Q5_K   |  45.4GB
+
+--------------------------------------------------------------------------------
+📊 MODEL SIZE ANALYSIS
+--------------------------------------------------------------------------------
+  40-50GB: avg 80.00 TPS (1 models)
+  30-40GB: avg 100.00 TPS (3 models)
+  20-30GB: avg 150.00 TPS (3 models)
+  10-20GB: avg 125.00 TPS (2 models)
+
+================================================================================
+💡 INSIGHTS
+================================================================================
+
+🏆 Fastest Model: BigDaddyG-Custom-Q2_K
+   TPS: 150.00
+   Quantization: Q2_K
+   Size: 23.7GB
+
+⚡ Best Latency: BigDaddyG-Custom-Q2_K
+   Latency: 6.67 ms/token
+   Quantization: Q2_K
+
+🎯 Best Quantization: Q2_K (150.00 TPS avg)
+
+================================================================================

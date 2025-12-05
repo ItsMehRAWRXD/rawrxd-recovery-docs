@@ -5,29 +5,32 @@
 #include <cmath>
 #include <iomanip>
 #include <thread>
+#include <filesystem>
+#include <algorithm>
+#include <QCoreApplication>
 #include "gpu_backend.hpp"
+#include "inference_engine.hpp"
 
-/**
- * GPU Inference Benchmark
- * Measures real token-per-second throughput on a GGUF model
- * using the Vulkan GPU backend
- */
+namespace fs = std::filesystem;
 
 struct BenchmarkResult {
+    std::string model_path;
     std::string model_name;
-    std::string backend;
+    size_t file_size_gb;
     int total_tokens;
+    double load_time_ms;
     double total_time_ms;
     double tokens_per_sec;
     double avg_latency_ms;
-    bool gpu_enabled;
+    bool success;
+    std::string error;
 };
 
 void printHeader() {
     std::cout << "\n";
     std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║      GPU Inference Benchmark - Real GGUF Model Test    ║\n";
-    std::cout << "║   Measuring Token Generation on AMD Radeon GPU        ║\n";
+    std::cout << "║   REAL GPU BENCHMARK - ACTUAL MODEL LOADING & INFERENCE║\n";
+    std::cout << "║         AMD Radeon RX 7800 XT - Vulkan Backend         ║\n";
     std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
 }
 
@@ -43,8 +46,6 @@ void printSystemInfo() {
         std::cout << "GPU Device: " << gpu.deviceName().toStdString() << "\n";
         std::cout << "GPU Memory: " << (gpu.totalMemory() / (1024*1024)) << " MB\n";
         std::cout << "GPU Backend: " << gpu.backendName().toStdString() << "\n";
-        std::cout << "Expected Speedup: " << std::fixed << std::setprecision(1) 
-                  << gpu.expectedSpeedup() << "x vs CPU\n";
     } else {
         std::cout << "GPU Backend: CPU FALLBACK (no GPU acceleration)\n";
     }
@@ -52,194 +53,176 @@ void printSystemInfo() {
     std::cout << "\n";
 }
 
-void simulateTokenGeneration(int num_tokens, double tokens_per_sec, 
-                             std::vector<double>& latencies) {
-    /**
-     * Simulate token generation with realistic latencies
-     * based on GPU/CPU backend capabilities
-     */
-    
-    latencies.clear();
-    double avg_latency_ms = 1000.0 / tokens_per_sec;
-    
-    // Add realistic variance (±20% jitter)
-    for (int i = 0; i < num_tokens; i++) {
-        double jitter = 0.8 + (rand() % 40) / 100.0;  // 0.8 - 1.2x
-        double latency = avg_latency_ms * jitter;
-        latencies.push_back(latency);
-    }
-}
-
-BenchmarkResult runBenchmark(const std::string& model_name, 
-                             int num_tokens,
-                             bool use_gpu) {
+BenchmarkResult benchmarkRealModel(const std::string& model_path, int num_tokens = 128) {
     BenchmarkResult result;
-    result.model_name = model_name;
-    result.gpu_enabled = use_gpu;
+    result.model_path = model_path;
+    result.model_name = fs::path(model_path).stem().string();
+    result.file_size_gb = fs::file_size(model_path) / (1024ULL * 1024 * 1024);
     result.total_tokens = num_tokens;
+    result.success = false;
     
-    // Determine expected throughput based on backend
-    double expected_tokens_per_sec;
-    if (use_gpu) {
-        // GPU inference: expect 50-150 tokens/sec depending on model
-        expected_tokens_per_sec = 80.0;  // Conservative estimate for Q4_K
-        result.backend = "Vulkan GPU (AMD RX 7800 XT)";
-    } else {
-        // CPU inference: 25-30 tokens/sec
-        expected_tokens_per_sec = 28.0;
-        result.backend = "CPU (Fallback)";
+    std::cout << "\n╔════════════════════════════════════════════════════════╗\n";
+    std::cout << "║ Model: " << result.model_name << "\n";
+    std::cout << "║ Size:  " << result.file_size_gb << " GB\n";
+    std::cout << "╚════════════════════════════════════════════════════════╝\n";
+    
+    try {
+        InferenceEngine engine(QString::fromStdString(model_path));
+        
+        std::cout << "Loading model..." << std::flush;
+        auto load_start = std::chrono::high_resolution_clock::now();
+        
+        bool loaded = engine.loadModel(QString::fromStdString(model_path));
+        
+        auto load_end = std::chrono::high_resolution_clock::now();
+        result.load_time_ms = std::chrono::duration<double, std::milli>(load_end - load_start).count();
+        
+        if (!loaded) {
+            result.error = "Failed to load model";
+            std::cout << " FAILED\n";
+            return result;
+        }
+        
+        std::cout << " OK (" << (result.load_time_ms / 1000.0) << " sec)\n";
+        
+        // Prepare input
+        QString prompt = "Write a short story about artificial intelligence:";
+        std::vector<int32_t> tokens = engine.tokenize(prompt);
+        
+        std::cout << "Generating " << num_tokens << " tokens..." << std::flush;
+        
+        // Run inference
+        auto gen_start = std::chrono::high_resolution_clock::now();
+        
+        std::vector<int32_t> output = engine.generate(tokens, num_tokens);
+        
+        auto gen_end = std::chrono::high_resolution_clock::now();
+        result.total_time_ms = std::chrono::duration<double, std::milli>(gen_end - gen_start).count();
+        
+        // Calculate metrics
+        result.tokens_per_sec = (num_tokens * 1000.0) / result.total_time_ms;
+        result.avg_latency_ms = result.total_time_ms / num_tokens;
+        result.success = true;
+        
+        std::cout << " OK\n";
+        std::cout << "\n✓ RESULTS:\n";
+        std::cout << "  Load Time:       " << std::fixed << std::setprecision(2) << (result.load_time_ms / 1000.0) << " sec\n";
+        std::cout << "  Generation Time: " << std::fixed << std::setprecision(2) << result.total_time_ms << " ms\n";
+        std::cout << "  Tokens/Sec:      " << std::fixed << std::setprecision(2) << result.tokens_per_sec << " TPS\n";
+        std::cout << "  Avg Latency:     " << std::fixed << std::setprecision(2) << result.avg_latency_ms << " ms/token\n";
+        std::cout << "  Output Tokens:   " << output.size() << "\n";
+        
+        engine.unloadModel();
+        
+    } catch (const std::exception& e) {
+        result.error = std::string("Exception: ") + e.what();
+        std::cout << "\n✗ ERROR: " << result.error << "\n";
     }
-    
-    std::cout << "=== BENCHMARK: " << model_name << " ===\n";
-    std::cout << "Backend: " << result.backend << "\n";
-    std::cout << "Generating " << num_tokens << " tokens...\n";
-    
-    // Simulate token generation
-    std::vector<double> latencies;
-    simulateTokenGeneration(num_tokens, expected_tokens_per_sec, latencies);
-    
-    // Calculate total time
-    double total_time_ms = 0.0;
-    for (double lat : latencies) {
-        total_time_ms += lat;
-    }
-    
-    result.tokens_per_sec = (num_tokens * 1000.0) / total_time_ms;
-    result.total_time_ms = total_time_ms;
-    result.avg_latency_ms = total_time_ms / num_tokens;
-    
-    // Print results
-    std::cout << "Time: " << std::fixed << std::setprecision(2) 
-              << total_time_ms << " ms (" 
-              << (total_time_ms / 1000.0) << " sec)\n";
-    std::cout << "Tokens/Sec: " << std::setprecision(2) 
-              << result.tokens_per_sec << "\n";
-    std::cout << "Avg Latency/Token: " << std::setprecision(2) 
-              << result.avg_latency_ms << " ms\n";
-    std::cout << "\n";
     
     return result;
 }
 
-void printComparison(const BenchmarkResult& cpu_result, 
-                     const BenchmarkResult& gpu_result) {
-    std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║         PERFORMANCE COMPARISON: CPU vs GPU             ║\n";
-    std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
-    
-    std::cout << std::left << std::setw(25) << "Metric"
-              << std::setw(25) << "CPU Baseline"
-              << std::setw(25) << "GPU (Vulkan)" << "\n";
-    std::cout << std::string(75, '─') << "\n";
-    
-    // Throughput
-    std::cout << std::setw(25) << "Tokens/Sec"
-              << std::setw(25) << std::fixed << std::setprecision(2) << cpu_result.tokens_per_sec
-              << std::setw(25) << gpu_result.tokens_per_sec << "\n";
-    
-    // Latency
-    std::cout << std::setw(25) << "Avg Latency (ms)"
-              << std::setw(25) << std::fixed << std::setprecision(2) << cpu_result.avg_latency_ms
-              << std::setw(25) << gpu_result.avg_latency_ms << "\n";
-    
-    // Time for 256 tokens
-    double cpu_time_256 = (256.0 / cpu_result.tokens_per_sec) * 1000.0;
-    double gpu_time_256 = (256.0 / gpu_result.tokens_per_sec) * 1000.0;
-    std::cout << std::setw(25) << "Time for 256 Tokens (ms)"
-              << std::setw(25) << std::fixed << std::setprecision(0) << cpu_time_256
-              << std::setw(25) << gpu_time_256 << "\n";
-    
-    // Speedup
-    double speedup = cpu_result.tokens_per_sec / gpu_result.tokens_per_sec;
-    std::cout << std::string(75, '─') << "\n";
-    std::cout << std::setw(25) << "GPU Speedup"
-              << std::setw(25) << "1.0x (baseline)"
-              << std::setw(25) << std::fixed << std::setprecision(2) << speedup << "x\n";
-    
-    double time_saved = cpu_time_256 - gpu_time_256;
-    double percent_saved = (time_saved / cpu_time_256) * 100.0;
-    std::cout << std::setw(25) << "Time Saved (256 tok)"
-              << std::setw(25) << ""
-              << std::setw(25) << std::fixed << std::setprecision(0) 
-              << time_saved << " ms (" << percent_saved << "%)\n";
-    
-    std::cout << "\n";
-}
-
-void printEstimatedThroughput() {
-    std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║    Estimated Performance: AMD RX 7800 XT GPU          ║\n";
-    std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
-    
-    std::cout << "Model Type              | Tokens/Sec | Context/Sec  | Use Case\n";
-    std::cout << std::string(70, '─') << "\n";
-    std::cout << "Q2_K (Tiny, 15GB)       | 120-150    | 8-10 k/s     | Mobile, Low-end\n";
-    std::cout << "Q4_K (Medium, 36GB)     | 50-80      | 3-5 k/s      | General inference ✓\n";
-    std::cout << "Q5_K (Large, 45GB)      | 30-50      | 2-3 k/s      | High quality\n";
-    std::cout << "Q6_K (XL, 58GB)         | 20-30      | 1-2 k/s      | Maximum quality\n";
-    std::cout << "F32 (Full Precision)    | 10-15      | <1 k/s       | Research only\n";
-    std::cout << "\n";
-    
-    std::cout << "Note: Estimates assume 7800 XT with optimized Vulkan kernels\n";
-    std::cout << "      Actual performance depends on model architecture and prompt length\n\n";
-}
-
 int main(int argc, char* argv[]) {
+    QCoreApplication app(argc, argv);
+    
     printHeader();
     printSystemInfo();
     
-    // Run benchmarks
-    std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║           Running Inference Benchmarks                 ║\n";
+    // Configuration
+    std::string models_dir = "D:\\OllamaModels";
+    int tokens_per_model = 128;
+    
+    // Parse command line
+    if (argc > 1) {
+        models_dir = argv[1];
+    }
+    if (argc > 2) {
+        tokens_per_model = std::atoi(argv[2]);
+    }
+    
+    std::cout << "\n╔════════════════════════════════════════════════════════╗\n";
+    std::cout << "║     REAL GPU BENCHMARK - ACTUAL MODEL LOADING          ║\n";
     std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
     
-    // Benchmark 1: CPU baseline (256 tokens)
-    BenchmarkResult cpu_result = runBenchmark(
-        "BigDaddyG-Q4_K (CPU Baseline)",
-        256,
-        false  // CPU
-    );
+    std::cout << "Models Directory: " << models_dir << "\n";
+    std::cout << "Tokens Per Test:  " << tokens_per_model << "\n\n";
     
-    // Benchmark 2: GPU acceleration (256 tokens)
-    BenchmarkResult gpu_result = runBenchmark(
-        "BigDaddyG-Q4_K (GPU Vulkan)",
-        256,
-        true   // GPU
-    );
+    // Discover GGUF models
+    std::vector<std::string> model_paths;
+    try {
+        for (const auto& entry : fs::directory_iterator(models_dir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".gguf") {
+                model_paths.push_back(entry.path().string());
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error scanning directory: " << e.what() << "\n";
+        return 1;
+    }
     
-    // Comparison
-    printComparison(cpu_result, gpu_result);
+    // Sort by size (descending)
+    std::sort(model_paths.begin(), model_paths.end(), [](const std::string& a, const std::string& b) {
+        return fs::file_size(a) > fs::file_size(b);
+    });
     
-    // Extended benchmarks
-    std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║     Extended Throughput Test (1024 tokens)             ║\n";
+    std::cout << "Found " << model_paths.size() << " GGUF models\n";
+    
+    if (model_paths.empty()) {
+        std::cerr << "No GGUF models found!\n";
+        return 1;
+    }
+    
+    // Benchmark each model
+    std::vector<BenchmarkResult> results;
+    
+    for (size_t i = 0; i < model_paths.size(); i++) {
+        std::cout << "\n[" << (i+1) << "/" << model_paths.size() << "] ";
+        BenchmarkResult result = benchmarkRealModel(model_paths[i], tokens_per_model);
+        results.push_back(result);
+        
+        // Brief pause between models
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
+    
+    // Print summary
+    std::cout << "\n╔════════════════════════════════════════════════════════╗\n";
+    std::cout << "║                  BENCHMARK SUMMARY                     ║\n";
     std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
     
-    BenchmarkResult gpu_extended = runBenchmark(
-        "BigDaddyG-Q4_K (GPU - Sustained)",
-        1024,
-        true
-    );
+    std::cout << std::left << std::setw(35) << "Model"
+              << std::setw(10) << "Size (GB)"
+              << std::setw(12) << "TPS"
+              << std::setw(12) << "Latency"
+              << std::setw(10) << "Status" << "\n";
+    std::cout << std::string(80, '─') << "\n";
     
-    // Performance estimates
-    printEstimatedThroughput();
+    for (const auto& r : results) {
+        std::cout << std::left << std::setw(35) << r.model_name.substr(0, 33)
+                  << std::setw(10) << r.file_size_gb
+                  << std::setw(12) << std::fixed << std::setprecision(2) 
+                  << (r.success ? r.tokens_per_sec : 0.0)
+                  << std::setw(12) << std::fixed << std::setprecision(2) 
+                  << (r.success ? r.avg_latency_ms : 0.0)
+                  << std::setw(10) << (r.success ? "✓" : "✗") << "\n";
+    }
     
-    // Final summary
-    std::cout << "╔════════════════════════════════════════════════════════╗\n";
-    std::cout << "║              BENCHMARK SUMMARY                         ║\n";
-    std::cout << "╚════════════════════════════════════════════════════════╝\n\n";
+    // Export CSV
+    std::string csv_path = "D:\\temp\\RawrXD-q8-wire\\test_results\\REAL_GPU_BENCHMARK_RESULTS.csv";
+    std::ofstream csv(csv_path);
     
-    std::cout << "✓ GPU Backend: " << (gpu_result.gpu_enabled ? "ENABLED" : "DISABLED") << "\n";
-    std::cout << "✓ GPU Device: AMD Radeon RX 7800 XT\n";
-    std::cout << "✓ Vulkan Backend: ACTIVE\n";
-    std::cout << "✓ Speedup Achieved: " << std::fixed << std::setprecision(1) 
-              << (cpu_result.tokens_per_sec / gpu_result.tokens_per_sec) << "x\n";
+    if (csv.is_open()) {
+        csv << "model,file_size_gb,tokens,load_time_ms,gen_time_ms,tps,latency_ms,success,error\n";
+        for (const auto& r : results) {
+            csv << r.model_name << "," << r.file_size_gb << "," << r.total_tokens << ","
+                << std::fixed << std::setprecision(3) << r.load_time_ms << ","
+                << r.total_time_ms << "," << r.tokens_per_sec << "," << r.avg_latency_ms << ","
+                << (r.success ? "true" : "false") << "," << r.error << "\n";
+        }
+        csv.close();
+        std::cout << "\n✓ Results exported to: " << csv_path << "\n";
+    }
     
-    double improvement_percent = ((gpu_result.tokens_per_sec - cpu_result.tokens_per_sec) 
-                                   / cpu_result.tokens_per_sec) * 100.0;
-    std::cout << "✓ Performance Improvement: " << improvement_percent << "%\n";
-    
-    std::cout << "\n✓ GPU INFERENCE TEST COMPLETE\n\n";
+    std::cout << "\n✓ ALL BENCHMARKS COMPLETE\n\n";
     
     return 0;
 }
